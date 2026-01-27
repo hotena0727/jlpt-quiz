@@ -60,4 +60,3 @@ with st.form("quiz_form"):
     user_answers = {}
     for i, q in enumerate(quiz, start=1):
         st.markdown(f"### Q{i}")
-        st.write
