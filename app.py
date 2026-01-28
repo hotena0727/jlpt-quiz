@@ -117,6 +117,10 @@ QUESTIONS = [
     {"id": 11, "prompt": "（　）に入るものは？", "sentence": "彼は約束を（　）人だ。", "choices": ["やぶる", "やぶって", "やぶった", "やぶり"], "answer_index": 0, "explanation": "「約束を破る」= 약속을 어기다."},
     {"id": 12, "prompt": "（　）に入るものは？", "sentence": "この仕事は今日中に（　）必要があります。", "choices": ["おわって", "おわらせる", "おわらせた", "おわり"], "answer_index": 1, "explanation": "「終わらせる」= 끝내다(타동)."},
 ]
+{"id": 1, ..., "answer_index": 1, "explanation": "...", "tag": "이유"},
+{"id": 2, ..., "answer_index": 0, "explanation": "...", "tag": "이유"},
+{"id": 3, ..., "answer_index": 0, "explanation": "...", "tag": "대조"},
+{"id": 4, ..., "answer_index": 0, "explanation": "...", "tag": "조건"},
 
 # -------------------------
 # 6) 10문제 세트 고정
@@ -192,6 +196,46 @@ if st.session_state.submitted:
         st.caption("해설: " + q["explanation"])
 
     st.write(f"## 점수: {score} / 10")
+# ---- 총평 생성 ----
+wrong_tags = []
+
+for q in quiz:
+    if user_answers[q["id"]] != q["choices"][q["answer_index"]]:
+        if "tag" in q:
+            wrong_tags.append(q["tag"])
+
+if wrong_tags:
+    from collections import Counter
+    most_common = Counter(wrong_tags).most_common(1)[0][0]
+    st.info(f"📌 총평: **{most_common} 문형**이 조금 약해 보여요. 관련 문제를 다시 복습해 보세요.")
+else:
+    st.success("🎉 총평: 전반적으로 문형 이해가 아주 좋습니다!")
+# ---- 오답 노트 ----
+st.subheader("📝 오답 노트")
+
+wrong_exists = False
+
+for i, q in enumerate(quiz, start=1):
+    picked = user_answers[q["id"]]
+    correct = q["choices"][q["answer_index"]]
+
+    if picked != correct:
+        wrong_exists = True
+        st.markdown(f"**Q{i}**")
+        st.write(q["sentence"])
+        st.write(f"- 내 답: ❌ {picked}")
+        st.write(f"- 정답: ✅ {correct}")
+        st.caption("해설: " + q["explanation"])
+        st.divider()
+
+if not wrong_exists:
+    st.write("틀린 문제가 없습니다 👏")
+
+if st.button("🔄 같은 문제 다시 풀기"):
+    for q in quiz:
+        st.session_state.pop(f"pick_{q['id']}", None)
+    st.session_state.submitted = False
+    st.rerun()
 
     # ---- 결과 저장 (CSV) : 한 번만 저장 ----
     if not st.session_state.saved_once:
@@ -215,4 +259,5 @@ if st.session_state.submitted:
         df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         st.session_state.saved_once = True
         st.success("✅ 결과가 저장되었습니다 (results.csv)")
+
 
