@@ -3,6 +3,18 @@ import random
 from datetime import datetime
 
 st.set_page_config(page_title="JLPT 10문제 퀴즈")
+import os
+
+# (관리자용) 결과 CSV 다운로드
+if os.path.exists("results.csv"):
+    with open("results.csv", "rb") as f:
+        st.download_button(
+            "📥 결과 다운로드 (CSV)",
+            f,
+            file_name="results.csv",
+            mime="text/csv",
+        )
+
 
 # -------------------------
 # 0) 비밀번호(Secrets)
@@ -175,4 +187,5 @@ if not st.session_state.saved_once:
     st.success("✅ 결과가 저장되었습니다 (results.csv)")
 else:
     st.info("이미 저장된 결과입니다.")
+
 
