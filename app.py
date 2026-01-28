@@ -55,23 +55,36 @@ with col2:
 # 3) 선생님 전용: 관리자 키 입력 → CSV 다운로드 버튼
 # (위치: 제목 아래 / 문제 시작 전)
 # -------------------------
-if ADMIN_KEY:  # secrets에 ADMIN_KEY를 넣었을 때만 표시
-    st.divider()
-    st.caption("※ 선생님 전용")
-    admin_key_input = st.text_input("관리자 키(선생님만)", type="password", key="admin_key_input")
+# -------------------------
+# 3) 선생님 전용: URL 파라미터로만 관리자 모드 활성화
+#    예) https://...streamlit.app/?admin=senwoo_admin_2026
+# -------------------------
+admin_mode = False
+try:
+    qs = st.query_params  # Streamlit 최신 버전
+    admin_value = qs.get("admin", "")
+    if isinstance(admin_value, list):
+        admin_value = admin_value[0] if admin_value else ""
+    if admin_value and ADMIN_KEY and admin_value == ADMIN_KEY:
+        admin_mode = True
+except Exception:
+    admin_mode = False
 
-    if admin_key_input and admin_key_input == ADMIN_KEY:
-        if os.path.exists("results.csv"):
-            with open("results.csv", "rb") as f:
-                st.download_button(
-                    "📥 결과 다운로드 (CSV)",
-                    f,
-                    file_name="results.csv",
-                    mime="text/csv",
-                )
-        else:
-            st.info("아직 저장된 결과가 없습니다 (results.csv 없음).")
+if admin_mode:
     st.divider()
+    st.caption("※ 선생님 전용(관리자 모드)")
+    if os.path.exists("results.csv"):
+        with open("results.csv", "rb") as f:
+            st.download_button(
+                "📥 결과 다운로드 (CSV)",
+                f,
+                file_name="results.csv",
+                mime="text/csv",
+            )
+    else:
+        st.info("아직 저장된 결과가 없습니다 (results.csv 없음).")
+    st.divider()
+
 
 # -------------------------
 # 4) 응시자 정보(이름/닉네임)
@@ -202,3 +215,4 @@ if st.session_state.submitted:
         df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         st.session_state.saved_once = True
         st.success("✅ 결과가 저장되었습니다 (results.csv)")
+
