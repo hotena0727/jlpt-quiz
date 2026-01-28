@@ -1,60 +1,62 @@
-PUBLIC_MODE = True  # ✅ True면 비번 없이 공개 / False면 비번 필요
-
 import streamlit as st
 import random
 import os
 import pandas as pd
 from datetime import datetime
 
+# =========================================================
+# 설정
+# =========================================================
+PUBLIC_MODE = True  # ✅ True면 비번 없이 공개 / False면 비번 필요(Secrets의 APP_TOKEN)
+
 st.set_page_config(page_title="JLPT 단어 퀴즈", page_icon="🧠")
 
-# -------------------------
-# (선택) 비밀번호 잠금: 기존 앱과 동일하게 쓰고 싶으면 ON
-# - Secrets에 APP_TOKEN이 있으면 잠금 적용
-# - 없으면(또는 끄고 싶으면) 아래 블록 통째로 주석 처리
-# -------------------------
-APP_TOKEN = st.secrets.get("APP_TOKEN")
+# =========================================================
+# (선택) 비밀번호 잠금
+# =========================================================
+APP_TOKEN = None  # 공개모드 기본
 
 if not PUBLIC_MODE:
     APP_TOKEN = st.secrets.get("APP_TOKEN")
     if not APP_TOKEN:
-        st.error("관리자 설정 필요: Secrets에 APP_TOKEN을 추가하세요.")
+        st.error("관리자 설정 필요: Streamlit Cloud의 Secrets에 APP_TOKEN을 추가하세요. (APP_TOKEN)")
         st.stop()
 
-    if "unlocked" not in st.session_state:
-        st.session_state.unlocked = False
+    if "vocab_unlocked" not in st.session_state:
+        st.session_state.vocab_unlocked = False
 
-    if not st.session_state.unlocked:
+    if not st.session_state.vocab_unlocked:
         st.title("🔒 비밀번호가 필요합니다")
         token = st.text_input("접속 비밀번호", type="password")
         if st.button("입장"):
             if token == APP_TOKEN:
-                st.session_state.unlocked = True
+                st.session_state.vocab_unlocked = True
                 st.rerun()
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
         st.stop()
-        
-# -------------------------
-# 1) 헤더 + 로그아웃(단어퀴즈만)
-# -------------------------
+
+# =========================================================
+# 헤더
+# =========================================================
 col1, col2 = st.columns([3, 1])
 with col1:
     st.title("🧠 JLPT 레벨별 단어 퀴즈")
 with col2:
-    if APP_TOKEN and st.button("로그아웃"):
+    if (not PUBLIC_MODE) and st.button("로그아웃"):
         st.session_state.vocab_unlocked = False
         st.session_state.pop("vocab_quiz_ids", None)
         st.session_state.pop("vocab_submitted", None)
         st.session_state.pop("vocab_saved_once", None)
+        st.session_state.pop("prev_level", None)
         keys_to_remove = [k for k in st.session_state.keys() if str(k).startswith("vocab_pick_")]
         for k in keys_to_remove:
             st.session_state.pop(k, None)
         st.rerun()
 
-# -------------------------
-# 2) 응시자 정보
-# -------------------------
+# =========================================================
+# 응시자 정보
+# =========================================================
 st.subheader("응시자 정보")
 a, b = st.columns(2)
 with a:
@@ -66,10 +68,10 @@ if not real_name.strip() or not nickname.strip():
     st.info("이름과 닉네임을 입력하면 퀴즈를 시작할 수 있어요.")
     st.stop()
 
-# -------------------------
-# 3) 단어 데이터 (레벨별)
-# - quiz_type: "meaning" (뜻 고르기), "reading"(읽기 고르기)
-# -------------------------
+# =========================================================
+# 단어 데이터 (레벨별)
+# - quiz_type: "meaning"(뜻), "reading"(읽기)
+# =========================================================
 VOCAB_SETS = {
     "N5": [
         {"id": 5001, "word": "学校", "reading": "がっこう", "meaning_ko": "학교", "quiz_type": "meaning",
@@ -151,21 +153,34 @@ VOCAB_SETS = {
     ],
 }
 
-# -------------------------
-# 4) 레벨 선택
-# -------------------------
+# =========================================================
+# 레벨 선택
+# =========================================================
 st.subheader("레벨 선택")
 level = st.selectbox("풀 레벨을 선택하세요", list(VOCAB_SETS.keys()), key="vocab_level")
 
 VOCABS = VOCAB_SETS[level]
-
 if len(VOCABS) < 10:
     st.warning("선택한 레벨의 문제가 10개 미만입니다. 데이터(단어)를 더 추가해 주세요.")
     st.stop()
 
-# -------------------------
-# 5) 10문제 세트 고정
-# -------------------------
+# ✅ 레벨이 바뀌면 이전 세트 초기화
+if "prev_level" not in st.session_state:
+    st.session_state.prev_level = level
+
+if st.session_state.prev_level != level:
+    st.session_state.vocab_quiz_ids = None
+    st.session_state.vocab_submitted = False
+    st.session_state.vocab_saved_once = False
+    # 이전 선택값 제거
+    keys_to_remove = [k for k in st.session_state.keys() if str(k).startswith("vocab_pick_")]
+    for k in keys_to_remove:
+        st.session_state.pop(k, None)
+    st.session_state.prev_level = level
+
+# =========================================================
+# 10문제 세트 고정
+# =========================================================
 if "vocab_quiz_ids" not in st.session_state:
     st.session_state.vocab_quiz_ids = None
 if "vocab_submitted" not in st.session_state:
@@ -191,9 +206,9 @@ if st.session_state.vocab_quiz_ids is None:
 id_to_q = {q["id"]: q for q in VOCABS}
 quiz = [id_to_q[qid] for qid in st.session_state.vocab_quiz_ids]
 
-# -------------------------
-# 6) 문제 표시 + 제출
-# -------------------------
+# =========================================================
+# 문제 표시 + 제출
+# =========================================================
 with st.form("vocab_form"):
     user_answers = {}
 
@@ -203,11 +218,9 @@ with st.form("vocab_form"):
         if q.get("quiz_type") == "reading":
             question_text = f"**{q['word']}** 의 읽기는?"
             choices = q["choices"]
-            correct = choices[q["answer_index"]]
         else:
             question_text = f"**{q['word']}（{q['reading']}）** 의 뜻은?"
             choices = q["choices"]
-            correct = choices[q["answer_index"]]
 
         st.write(question_text)
 
@@ -221,9 +234,9 @@ with st.form("vocab_form"):
 
     submitted = st.form_submit_button("제출 & 채점")
 
-# -------------------------
-# 7) 채점 + 저장
-# -------------------------
+# =========================================================
+# 채점 + 저장
+# =========================================================
 if submitted:
     st.session_state.vocab_submitted = True
 
@@ -272,8 +285,11 @@ if st.session_state.vocab_submitted:
 
         csv_path = "vocab_results.csv"
         if os.path.exists(csv_path):
-            df = pd.read_csv(csv_path)
-            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+            try:
+                df = pd.read_csv(csv_path)
+                df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+            except Exception:
+                df = pd.DataFrame([row])
         else:
             df = pd.DataFrame([row])
 
