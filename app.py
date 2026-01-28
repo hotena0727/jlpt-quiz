@@ -3,14 +3,15 @@ import random
 import os
 import pandas as pd
 from datetime import datetime
+from collections import Counter
 
 st.set_page_config(page_title="JLPT 10문제 퀴즈")
 
 # -------------------------
 # 0) Secrets
 # -------------------------
-APP_TOKEN = st.secrets.get("APP_TOKEN")
-ADMIN_KEY = st.secrets.get("ADMIN_KEY")  # 선생님 전용 키(없어도 실행은 됨)
+APP_TOKEN = st.secrets.get("APP_TOKEN")          # 학생 접속 비번
+ADMIN_KEY = st.secrets.get("ADMIN_KEY")          # (선택) 선생님 전용 키: ?admin=... 일 때만 관리자 모드
 
 if not APP_TOKEN:
     st.error("관리자 설정 필요: Streamlit Cloud의 Secrets에 APP_TOKEN을 추가하세요.")
@@ -52,16 +53,12 @@ with col2:
         st.rerun()
 
 # -------------------------
-# 3) 선생님 전용: 관리자 키 입력 → CSV 다운로드 버튼
-# (위치: 제목 아래 / 문제 시작 전)
-# -------------------------
-# -------------------------
 # 3) 선생님 전용: URL 파라미터로만 관리자 모드 활성화
 #    예) https://...streamlit.app/?admin=senwoo_admin_2026
 # -------------------------
 admin_mode = False
 try:
-    qs = st.query_params  # Streamlit 최신 버전
+    qs = st.query_params
     admin_value = qs.get("admin", "")
     if isinstance(admin_value, list):
         admin_value = admin_value[0] if admin_value else ""
@@ -85,7 +82,6 @@ if admin_mode:
         st.info("아직 저장된 결과가 없습니다 (results.csv 없음).")
     st.divider()
 
-
 # -------------------------
 # 4) 응시자 정보(이름/닉네임)
 # -------------------------
@@ -101,21 +97,56 @@ if not real_name.strip() or not nickname.strip():
     st.stop()
 
 # -------------------------
-# 5) 문제 데이터
+# 5) 문제 데이터 (tag는 총평용)
 # -------------------------
 QUESTIONS = [
-    {"id": 1, "prompt": "（　）に入るものは？", "sentence": "今日は時間が（　）、勉強できませんでした。", "choices": ["あって", "なくて", "よくて", "こわくて"], "answer_index": 1, "explanation": "「時間がなくて」= 시간이 없어서.", "tag": "이유"},
-    {"id": 2, "prompt": "（　）に入るものは？", "sentence": "雨が降っている（　）、出かけません。", "choices": ["ので", "のに", "からこそ", "までに"], "answer_index": 0, "explanation": "「ので」= 이유/원인.", "tag": "대조"},
-    {"id": 3, "prompt": "（　）に入るものは？", "sentence": "説明を聞いた（　）、よく分かりません。", "choices": ["のに", "ので", "から", "まで"], "answer_index": 0, "explanation": "「のに」= 했는데도."},
-    {"id": 4, "prompt": "（　）に入るものは？", "sentence": "駅まで歩く（　）、10分ぐらいです。", "choices": ["と", "なら", "ので", "のに"], "answer_index": 0, "explanation": "「～と」= 조건(일반적 결과)."},
-    {"id": 5, "prompt": "（　）に入るものは？", "sentence": "疲れている（　）、今日は早く寝ます。", "choices": ["から", "のに", "まで", "より"], "answer_index": 0, "explanation": "「から」= 이유."},
-    {"id": 6, "prompt": "（　）に入るものは？", "sentence": "この店は安い（　）、料理もおいしい。", "choices": ["し", "ので", "のに", "まで"], "answer_index": 0, "explanation": "「し」= 이유/나열."},
-    {"id": 7, "prompt": "（　）に入るものは？", "sentence": "急いで（　）と、間に合いません。", "choices": ["いく", "いかない", "いけば", "いった"], "answer_index": 1, "explanation": "「～ないと」= ~하지 않으면."},
-    {"id": 8, "prompt": "（　）に入るものは？", "sentence": "電車が遅れた（　）、遅刻しました。", "choices": ["ため", "ところ", "ほど", "でも"], "answer_index": 0, "explanation": "「ため」= ~때문에."},
-    {"id": 9, "prompt": "（　）に入るものは？", "sentence": "日本に行ったら、富士山を（　）みたいです。", "choices": ["みて", "みる", "みた", "みよう"], "answer_index": 1, "explanation": "「V辞書形＋みたい」= ~하고 싶다."},
-    {"id": 10, "prompt": "（　）に入るものは？", "sentence": "この本は思ったより（　）。", "choices": ["むずかしい", "むずかしく", "むずかしかった", "むずかしさ"], "answer_index": 0, "explanation": "서술형은 형용사 기본형."},
-    {"id": 11, "prompt": "（　）に入るものは？", "sentence": "彼は約束を（　）人だ。", "choices": ["やぶる", "やぶって", "やぶった", "やぶり"], "answer_index": 0, "explanation": "「約束を破る」= 약속을 어기다."},
-    {"id": 12, "prompt": "（　）に入るものは？", "sentence": "この仕事は今日中に（　）必要があります。", "choices": ["おわって", "おわらせる", "おわらせた", "おわり"], "answer_index": 1, "explanation": "「終わらせる」= 끝내다(타동)."},
+    {"id": 1, "prompt": "（　）に入るものは？", "sentence": "今日は時間が（　）、勉強できませんでした。",
+     "choices": ["あって", "なくて", "よくて", "こわくて"], "answer_index": 1,
+     "explanation": "「時間がなくて」= 시간이 없어서.", "tag": "이유"},
+
+    {"id": 2, "prompt": "（　）に入るものは？", "sentence": "雨が降っている（　）、出かけません。",
+     "choices": ["ので", "のに", "からこそ", "までに"], "answer_index": 0,
+     "explanation": "「ので」= 이유/원인.", "tag": "이유"},
+
+    {"id": 3, "prompt": "（　）に入るものは？", "sentence": "説明を聞いた（　）、よく分かりません。",
+     "choices": ["のに", "ので", "から", "まで"], "answer_index": 0,
+     "explanation": "「のに」= 했는데도.", "tag": "대조"},
+
+    {"id": 4, "prompt": "（　）に入るものは？", "sentence": "駅まで歩く（　）、10分ぐらいです。",
+     "choices": ["と", "なら", "ので", "のに"], "answer_index": 0,
+     "explanation": "「～と」= 조건(일반적 결과).", "tag": "조건"},
+
+    {"id": 5, "prompt": "（　）に入るものは？", "sentence": "疲れている（　）、今日は早く寝ます。",
+     "choices": ["から", "のに", "まで", "より"], "answer_index": 0,
+     "explanation": "「から」= 이유.", "tag": "이유"},
+
+    {"id": 6, "prompt": "（　）に入るものは？", "sentence": "この店は安い（　）、料理もおいしい。",
+     "choices": ["し", "ので", "のに", "まで"], "answer_index": 0,
+     "explanation": "「し」= 이유/나열.", "tag": "이유"},
+
+    {"id": 7, "prompt": "（　）に入るものは？", "sentence": "急いで（　）と、間に合いません。",
+     "choices": ["いく", "いかない", "いけば", "いった"], "answer_index": 1,
+     "explanation": "「～ないと」= ~하지 않으면.", "tag": "조건"},
+
+    {"id": 8, "prompt": "（　）に入るものは？", "sentence": "電車が遅れた（　）、遅刻しました。",
+     "choices": ["ため", "ところ", "ほど", "でも"], "answer_index": 0,
+     "explanation": "「ため」= ~때문에.", "tag": "이유"},
+
+    {"id": 9, "prompt": "（　）に入るものは？", "sentence": "日本に行ったら、富士山を（　）みたいです。",
+     "choices": ["みて", "みる", "みた", "みよう"], "answer_index": 1,
+     "explanation": "「V辞書形＋みたい」= ~하고 싶다.", "tag": "희망"},
+
+    {"id": 10, "prompt": "（　）に入るものは？", "sentence": "この本は思ったより（　）。",
+     "choices": ["むずかしい", "むずかしく", "むずかしかった", "むずかしさ"], "answer_index": 0,
+     "explanation": "서술형은 형용사 기본형.", "tag": "문장형"},
+
+    {"id": 11, "prompt": "（　）に入るものは？", "sentence": "彼は約束を（　）人だ。",
+     "choices": ["やぶる", "やぶって", "やぶった", "やぶり"], "answer_index": 0,
+     "explanation": "「約束を破る」= 약속을 어기다.", "tag": "동사"},
+
+    {"id": 12, "prompt": "（　）に入るものは？", "sentence": "この仕事は今日中に（　）必要があります。",
+     "choices": ["おわって", "おわらせる", "おわらせた", "おわり"], "answer_index": 1,
+     "explanation": "「終わらせる」= 끝내다(타동).", "tag": "동사"},
 ]
 
 # -------------------------
@@ -133,7 +164,7 @@ if st.button("새 10문제 시작"):
     st.session_state.submitted = False
     st.session_state.saved_once = False
 
-    # 라디오 선택값 리셋
+    # 라디오 선택값 리셋(이전 선택이 남는 걸 방지)
     for q in QUESTIONS:
         st.session_state.pop(f"pick_{q['id']}", None)
 
@@ -166,16 +197,18 @@ with st.form("quiz_form"):
     submitted = st.form_submit_button("제출 & 채점")
 
 # -------------------------
-# 8) 채점 + 저장
+# 8) 채점 + 저장 + 리포트
 # -------------------------
 if submitted:
     st.session_state.submitted = True
 
 if st.session_state.submitted:
+    # 1) 선택 안 한 문제 체크
     if any(ans is None for ans in user_answers.values()):
         st.warning("선택하지 않은 문제가 있습니다. 모두 선택한 뒤 제출해 주세요.")
         st.stop()
 
+    # 2) 채점 + 결과 표시
     score = 0
     st.subheader("결과")
 
@@ -193,65 +226,60 @@ if st.session_state.submitted:
 
     st.write(f"## 점수: {score} / 10")
 
-# ---- 결과 저장 (CSV) : 한 번만 저장 ----
-if not st.session_state.saved_once:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = {
-        "timestamp": timestamp,
-        "real_name": real_name.strip(),
-        "nickname": nickname.strip(),
-        "score": score,
-        "total": 10,
-    }
+    # 3) 결과 저장(CSV) : 같은 세트에서 1번만 저장
+    if not st.session_state.saved_once:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        row = {
+            "timestamp": timestamp,
+            "real_name": real_name.strip(),
+            "nickname": nickname.strip(),
+            "score": score,
+            "total": 10,
+        }
 
-    csv_path = "results.csv"
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    else:
-        df = pd.DataFrame([row])
+        csv_path = "results.csv"
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        else:
+            df = pd.DataFrame([row])
 
-    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    st.session_state.saved_once = True
-    st.success("✅ 결과가 저장되었습니다 (results.csv)")
+        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        st.session_state.saved_once = True
+        st.success("✅ 결과가 저장되었습니다 (results.csv)")
 
-# ---- 총평 생성 ----
-wrong_tags = []
-
-for q in quiz:
-    if user_answers[q["id"]] != q["choices"][q["answer_index"]]:
-        if "tag" in q:
-            wrong_tags.append(q["tag"])
-
-if wrong_tags:
-    from collections import Counter
-    most_common = Counter(wrong_tags).most_common(1)[0][0]
-    st.info(f"📌 총평: **{most_common} 문형**이 조금 약해 보여요. 관련 문제를 다시 복습해 보세요.")
-else:
-    st.success("🎉 총평: 전반적으로 문형 이해가 아주 좋습니다!")
-# ---- 오답 노트 ----
-st.subheader("📝 오답 노트")
-
-wrong_exists = False
-
-for i, q in enumerate(quiz, start=1):
-    picked = user_answers[q["id"]]
-    correct = q["choices"][q["answer_index"]]
-
-    if picked != correct:
-        wrong_exists = True
-        st.markdown(f"**Q{i}**")
-        st.write(q["sentence"])
-        st.write(f"- 내 답: ❌ {picked}")
-        st.write(f"- 정답: ✅ {correct}")
-        st.caption("해설: " + q["explanation"])
-        st.divider()
-
-if not wrong_exists:
-    st.write("틀린 문제가 없습니다 👏")
-
-if st.button("🔄 같은 문제 다시 풀기"):
+    # 4) 총평 생성(tag 기반)
+    wrong_tags = []
     for q in quiz:
-        st.session_state.pop(f"pick_{q['id']}", None)
-    st.session_state.submitted = False
-    st.rerun()
+        if user_answers[q["id"]] != q["choices"][q["answer_index"]]:
+            wrong_tags.append(q.get("tag", "기타"))
+
+    if wrong_tags:
+        most_common = Counter(wrong_tags).most_common(1)[0][0]
+        st.info(f"📌 총평: **{most_common}** 유형이 조금 약해 보여요. 관련 문제를 다시 복습해 보세요.")
+    else:
+        st.success("🎉 총평: 전반적으로 문형 이해가 아주 좋습니다!")
+
+    # 5) 오답 노트
+    st.subheader("📝 오답 노트")
+    wrong_exists = False
+    for i, q in enumerate(quiz, start=1):
+        picked = user_answers[q["id"]]
+        correct = q["choices"][q["answer_index"]]
+        if picked != correct:
+            wrong_exists = True
+            st.markdown(f"**Q{i}**")
+            st.write(q["sentence"])
+            st.write(f"- 내 답: ❌ {picked}")
+            st.write(f"- 정답: ✅ {correct}")
+            st.caption("해설: " + q["explanation"])
+            st.divider()
+    if not wrong_exists:
+        st.write("틀린 문제가 없습니다 👏")
+
+    # 6) 같은 10문제 다시 풀기
+    if st.button("🔄 같은 문제 다시 풀기"):
+        for q in quiz:
+            st.session_state.pop(f"pick_{q['id']}", None)
+        st.session_state.submitted = False
+        st.rerun()
