@@ -1,31 +1,23 @@
 import streamlit as st
 import random
+import os
+import pandas as pd
 from datetime import datetime
 
 st.set_page_config(page_title="JLPT 10문제 퀴즈")
-import os
-
-# (관리자용) 결과 CSV 다운로드
-if os.path.exists("results.csv"):
-    with open("results.csv", "rb") as f:
-        st.download_button(
-            "📥 결과 다운로드 (CSV)",
-            f,
-            file_name="results.csv",
-            mime="text/csv",
-        )
-
 
 # -------------------------
-# 0) 비밀번호(Secrets)
+# 0) Secrets
 # -------------------------
 APP_TOKEN = st.secrets.get("APP_TOKEN")
+ADMIN_KEY = st.secrets.get("ADMIN_KEY")  # 선생님 전용 키(없어도 실행은 됨)
+
 if not APP_TOKEN:
     st.error("관리자 설정 필요: Streamlit Cloud의 Secrets에 APP_TOKEN을 추가하세요.")
     st.stop()
 
 # -------------------------
-# 1) 잠금 상태
+# 1) 잠금(학생 비번)
 # -------------------------
 if "unlocked" not in st.session_state:
     st.session_state.unlocked = False
@@ -41,20 +33,50 @@ if not st.session_state.unlocked:
             st.error("비밀번호가 올바르지 않습니다.")
     st.stop()
 
-# 로그인 후 화면
-col1, col2 = st.columns([1, 1])
+# -------------------------
+# 2) 로그인 후 헤더
+# -------------------------
+col1, col2 = st.columns([3, 1])
 with col1:
     st.title("JLPT 10문제 퀴즈")
 with col2:
     if st.button("로그아웃"):
         st.session_state.unlocked = False
-        # 선택/점수 상태도 초기화하고 싶으면 아래 2줄도 켜기
         st.session_state.pop("quiz_ids", None)
         st.session_state.pop("submitted", None)
+        st.session_state.pop("saved_once", None)
+        # 선택값도 정리
+        keys_to_remove = [k for k in st.session_state.keys() if str(k).startswith("pick_")]
+        for k in keys_to_remove:
+            st.session_state.pop(k, None)
         st.rerun()
 
-st.subheader("응시자 정보")
+# -------------------------
+# 3) 선생님 전용: 관리자 키 입력 → CSV 다운로드 버튼
+# (위치: 제목 아래 / 문제 시작 전)
+# -------------------------
+if ADMIN_KEY:  # secrets에 ADMIN_KEY를 넣었을 때만 표시
+    st.divider()
+    st.caption("※ 선생님 전용")
+    admin_key_input = st.text_input("관리자 키(선생님만)", type="password", key="admin_key_input")
 
+    if admin_key_input and admin_key_input == ADMIN_KEY:
+        if os.path.exists("results.csv"):
+            with open("results.csv", "rb") as f:
+                st.download_button(
+                    "📥 결과 다운로드 (CSV)",
+                    f,
+                    file_name="results.csv",
+                    mime="text/csv",
+                )
+        else:
+            st.info("아직 저장된 결과가 없습니다 (results.csv 없음).")
+    st.divider()
+
+# -------------------------
+# 4) 응시자 정보(이름/닉네임)
+# -------------------------
+st.subheader("응시자 정보")
 colA, colB = st.columns(2)
 with colA:
     real_name = st.text_input("이름", key="real_name")
@@ -66,7 +88,7 @@ if not real_name.strip() or not nickname.strip():
     st.stop()
 
 # -------------------------
-# 2) 문제 데이터
+# 5) 문제 데이터
 # -------------------------
 QUESTIONS = [
     {"id": 1, "prompt": "（　）に入るものは？", "sentence": "今日は時間が（　）、勉強できませんでした。", "choices": ["あって", "なくて", "よくて", "こわくて"], "answer_index": 1, "explanation": "「時間がなくて」= 시간이 없어서."},
@@ -84,20 +106,24 @@ QUESTIONS = [
 ]
 
 # -------------------------
-# 3) 10문제 세트 고정
+# 6) 10문제 세트 고정
 # -------------------------
 if "quiz_ids" not in st.session_state:
     st.session_state.quiz_ids = None
 if "submitted" not in st.session_state:
     st.session_state.submitted = False
+if "saved_once" not in st.session_state:
+    st.session_state.saved_once = False
 
 if st.button("새 10문제 시작"):
     st.session_state.quiz_ids = random.sample([q["id"] for q in QUESTIONS], 10)
     st.session_state.submitted = False
     st.session_state.saved_once = False
-    # 라디오 선택값 리셋(이전 선택이 남는 걸 방지)
+
+    # 라디오 선택값 리셋
     for q in QUESTIONS:
         st.session_state.pop(f"pick_{q['id']}", None)
+
     st.rerun()
 
 if st.session_state.quiz_ids is None:
@@ -108,11 +134,10 @@ id_to_q = {q["id"]: q for q in QUESTIONS}
 quiz = [id_to_q[qid] for qid in st.session_state.quiz_ids]
 
 # -------------------------
-# 4) 문제 표시 + 제출
+# 7) 문제 표시 + 제출
 # -------------------------
 with st.form("quiz_form"):
     user_answers = {}
-
     for i, q in enumerate(quiz, start=1):
         st.markdown(f"### Q{i}")
         st.write(q["prompt"])
@@ -128,13 +153,12 @@ with st.form("quiz_form"):
     submitted = st.form_submit_button("제출 & 채점")
 
 # -------------------------
-# 5) 채점
+# 8) 채점 + 저장
 # -------------------------
 if submitted:
     st.session_state.submitted = True
 
 if st.session_state.submitted:
-    # 선택 안 한 문제 체크
     if any(ans is None for ans in user_answers.values()):
         st.warning("선택하지 않은 문제가 있습니다. 모두 선택한 뒤 제출해 주세요.")
         st.stop()
@@ -155,37 +179,26 @@ if st.session_state.submitted:
         st.caption("해설: " + q["explanation"])
 
     st.write(f"## 점수: {score} / 10")
-import os
-import pandas as pd
 
-# ---- 결과 저장 (CSV) ----
-timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # ---- 결과 저장 (CSV) : 한 번만 저장 ----
+    if not st.session_state.saved_once:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-row = {
-    "timestamp": timestamp,
-    "real_name": real_name.strip(),
-    "nickname": nickname.strip(),
-    "score": score,
-    "total": 10,
-}
+        row = {
+            "timestamp": timestamp,
+            "real_name": real_name.strip(),
+            "nickname": nickname.strip(),
+            "score": score,
+            "total": 10,
+        }
 
-csv_path = "results.csv"
+        csv_path = "results.csv"
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        else:
+            df = pd.DataFrame([row])
 
-# 중복 저장 방지: 같은 세트에서 재실행/새로고침해도 한 번만 저장
-if "saved_once" not in st.session_state:
-    st.session_state.saved_once = False
-
-if not st.session_state.saved_once:
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    else:
-        df = pd.DataFrame([row])
-
-    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    st.session_state.saved_once = True
-    st.success("✅ 결과가 저장되었습니다 (results.csv)")
-else:
-    st.info("이미 저장된 결과입니다.")
-
-
+        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+        st.session_state.saved_once = True
+        st.success("✅ 결과가 저장되었습니다 (results.csv)")
