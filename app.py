@@ -104,8 +104,8 @@ if not real_name.strip() or not nickname.strip():
 # 5) 문제 데이터
 # -------------------------
 QUESTIONS = [
-    {"id": 1, "prompt": "（　）に入るものは？", "sentence": "今日は時間が（　）、勉強できませんでした。", "choices": ["あって", "なくて", "よくて", "こわくて"], "answer_index": 1, "explanation": "「時間がなくて」= 시간이 없어서."},
-    {"id": 2, "prompt": "（　）に入るものは？", "sentence": "雨が降っている（　）、出かけません。", "choices": ["ので", "のに", "からこそ", "までに"], "answer_index": 0, "explanation": "「ので」= 이유/원인."},
+    {"id": 1, "prompt": "（　）に入るものは？", "sentence": "今日は時間が（　）、勉強できませんでした。", "choices": ["あって", "なくて", "よくて", "こわくて"], "answer_index": 1, "explanation": "「時間がなくて」= 시간이 없어서.", "tag": "이유"},
+    {"id": 2, "prompt": "（　）に入るものは？", "sentence": "雨が降っている（　）、出かけません。", "choices": ["ので", "のに", "からこそ", "までに"], "answer_index": 0, "explanation": "「ので」= 이유/원인.", "tag": "대조"},
     {"id": 3, "prompt": "（　）に入るものは？", "sentence": "説明を聞いた（　）、よく分かりません。", "choices": ["のに", "ので", "から", "まで"], "answer_index": 0, "explanation": "「のに」= 했는데도."},
     {"id": 4, "prompt": "（　）に入るものは？", "sentence": "駅まで歩く（　）、10分ぐらいです。", "choices": ["と", "なら", "ので", "のに"], "answer_index": 0, "explanation": "「～と」= 조건(일반적 결과)."},
     {"id": 5, "prompt": "（　）に入るものは？", "sentence": "疲れている（　）、今日は早く寝ます。", "choices": ["から", "のに", "まで", "より"], "answer_index": 0, "explanation": "「から」= 이유."},
@@ -117,10 +117,6 @@ QUESTIONS = [
     {"id": 11, "prompt": "（　）に入るものは？", "sentence": "彼は約束を（　）人だ。", "choices": ["やぶる", "やぶって", "やぶった", "やぶり"], "answer_index": 0, "explanation": "「約束を破る」= 약속을 어기다."},
     {"id": 12, "prompt": "（　）に入るものは？", "sentence": "この仕事は今日中に（　）必要があります。", "choices": ["おわって", "おわらせる", "おわらせた", "おわり"], "answer_index": 1, "explanation": "「終わらせる」= 끝내다(타동)."},
 ]
-{"id": 1, ..., "answer_index": 1, "explanation": "...", "tag": "이유"},
-{"id": 2, ..., "answer_index": 0, "explanation": "...", "tag": "이유"},
-{"id": 3, ..., "answer_index": 0, "explanation": "...", "tag": "대조"},
-{"id": 4, ..., "answer_index": 0, "explanation": "...", "tag": "조건"},
 
 # -------------------------
 # 6) 10문제 세트 고정
@@ -196,6 +192,29 @@ if st.session_state.submitted:
         st.caption("해설: " + q["explanation"])
 
     st.write(f"## 점수: {score} / 10")
+
+# ---- 결과 저장 (CSV) : 한 번만 저장 ----
+if not st.session_state.saved_once:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    row = {
+        "timestamp": timestamp,
+        "real_name": real_name.strip(),
+        "nickname": nickname.strip(),
+        "score": score,
+        "total": 10,
+    }
+
+    csv_path = "results.csv"
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    else:
+        df = pd.DataFrame([row])
+
+    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    st.session_state.saved_once = True
+    st.success("✅ 결과가 저장되었습니다 (results.csv)")
+
 # ---- 총평 생성 ----
 wrong_tags = []
 
@@ -236,28 +255,3 @@ if st.button("🔄 같은 문제 다시 풀기"):
         st.session_state.pop(f"pick_{q['id']}", None)
     st.session_state.submitted = False
     st.rerun()
-
-    # ---- 결과 저장 (CSV) : 한 번만 저장 ----
-    if not st.session_state.saved_once:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        row = {
-            "timestamp": timestamp,
-            "real_name": real_name.strip(),
-            "nickname": nickname.strip(),
-            "score": score,
-            "total": 10,
-        }
-
-        csv_path = "results.csv"
-        if os.path.exists(csv_path):
-            df = pd.read_csv(csv_path)
-            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-        else:
-            df = pd.DataFrame([row])
-
-        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-        st.session_state.saved_once = True
-        st.success("✅ 결과가 저장되었습니다 (results.csv)")
-
-
