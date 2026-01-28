@@ -1,3 +1,5 @@
+PUBLIC_MODE = True  # ✅ True면 비번 없이 공개 / False면 비번 필요
+
 import streamlit as st
 import random
 import os
@@ -13,21 +15,26 @@ st.set_page_config(page_title="JLPT 단어 퀴즈", page_icon="🧠")
 # -------------------------
 APP_TOKEN = st.secrets.get("APP_TOKEN")
 
-if APP_TOKEN:
-    if "vocab_unlocked" not in st.session_state:
-        st.session_state.vocab_unlocked = False
+if not PUBLIC_MODE:
+    APP_TOKEN = st.secrets.get("APP_TOKEN")
+    if not APP_TOKEN:
+        st.error("관리자 설정 필요: Secrets에 APP_TOKEN을 추가하세요.")
+        st.stop()
 
-    if not st.session_state.vocab_unlocked:
-        st.title("🔒 비밀번호가 필요합니다 (단어 퀴즈)")
+    if "unlocked" not in st.session_state:
+        st.session_state.unlocked = False
+
+    if not st.session_state.unlocked:
+        st.title("🔒 비밀번호가 필요합니다")
         token = st.text_input("접속 비밀번호", type="password")
         if st.button("입장"):
             if token == APP_TOKEN:
-                st.session_state.vocab_unlocked = True
+                st.session_state.unlocked = True
                 st.rerun()
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
         st.stop()
-
+        
 # -------------------------
 # 1) 헤더 + 로그아웃(단어퀴즈만)
 # -------------------------
