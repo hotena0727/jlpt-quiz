@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+from datetime import datetime
 
 st.set_page_config(page_title="JLPT 10문제 퀴즈")
 
@@ -40,6 +41,18 @@ with col2:
         st.session_state.pop("submitted", None)
         st.rerun()
 
+st.subheader("응시자 정보")
+
+colA, colB = st.columns(2)
+with colA:
+    real_name = st.text_input("이름", key="real_name")
+with colB:
+    nickname = st.text_input("닉네임", key="nickname")
+
+if not real_name.strip() or not nickname.strip():
+    st.info("이름과 닉네임을 입력하면 퀴즈를 시작할 수 있어요.")
+    st.stop()
+
 # -------------------------
 # 2) 문제 데이터
 # -------------------------
@@ -69,6 +82,7 @@ if "submitted" not in st.session_state:
 if st.button("새 10문제 시작"):
     st.session_state.quiz_ids = random.sample([q["id"] for q in QUESTIONS], 10)
     st.session_state.submitted = False
+    st.session_state.saved_once = False
     # 라디오 선택값 리셋(이전 선택이 남는 걸 방지)
     for q in QUESTIONS:
         st.session_state.pop(f"pick_{q['id']}", None)
@@ -129,3 +143,36 @@ if st.session_state.submitted:
         st.caption("해설: " + q["explanation"])
 
     st.write(f"## 점수: {score} / 10")
+import os
+import pandas as pd
+
+# ---- 결과 저장 (CSV) ----
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+row = {
+    "timestamp": timestamp,
+    "real_name": real_name.strip(),
+    "nickname": nickname.strip(),
+    "score": score,
+    "total": 10,
+}
+
+csv_path = "results.csv"
+
+# 중복 저장 방지: 같은 세트에서 재실행/새로고침해도 한 번만 저장
+if "saved_once" not in st.session_state:
+    st.session_state.saved_once = False
+
+if not st.session_state.saved_once:
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    else:
+        df = pd.DataFrame([row])
+
+    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    st.session_state.saved_once = True
+    st.success("✅ 결과가 저장되었습니다 (results.csv)")
+else:
+    st.info("이미 저장된 결과입니다.")
+
